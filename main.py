@@ -1,9 +1,11 @@
+from keep_alive import keep_alive
 import os
 import time
 import random
 import requests
 from telebot import TeleBot
 from bs4 import BeautifulSoup
+
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
