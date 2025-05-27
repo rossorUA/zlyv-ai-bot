@@ -1,57 +1,60 @@
 import os
 import time
 import random
-import json
-from datetime import datetime
 import requests
-from keep_alive import keep_alive
+from telebot import TeleBot
+from bs4 import BeautifulSoup
 
-import telebot
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
-bot = telebot.TeleBot(TOKEN)
 
-POSTS = [
-    "Textual — новий фреймворк на Python для створення TUI-додатків у терміналі з логікою як у фронтенду.\n\nВін дає змогу створювати компоненти інтерфейсу як у React, але прямо в CLI.",
-    "Google DeepMind представив RT-2.5 — мультимодальну модель, яка інтерпретує відео як серіальні епізоди, розуміючи не просто кадри, а цілісні сцени та мотивацію.",
-    "GPT-4o тепер перебиває тебе вголос. OpenAI тестує нову голосову модель, яка не просто говорить, а здатна розпізнати, коли користувач починає говорити — й перебити його.\n\nЦе дозволяє ШІ реагувати як реальний співрозмовник з емоціями та плавністю.",
-    "Meta показала ШІ, який читає думки з EEG-даних. Модель здатна реконструювати прості образи на основі мозкової активності.\n\nЦе ще не телепатія, але дуже близько.",
-    "Python отримав нову бібліотеку Pydantic v2 — тепер вона у 12 разів швидша і повністю переписана на Rust.\n\nВалідація даних стала ще простішою та ефективнішою.",
-]
+bot = TeleBot(TOKEN)
+posted_texts = set()
 
-HISTORY_FILE = "history.json"
-used_posts = []
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
+}
 
-if os.path.exists(HISTORY_FILE):
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        used_posts = json.load(f)
 
-def save_history():
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(used_posts, f)
+def fetch_posts():
+    url = "https://neural.love/blog"
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, "html.parser")
+    articles = soup.find_all("article")
 
-def choose_post():
-    available = [p for p in POSTS if p not in used_posts]
-    if not available:
-        used_posts.clear()
-        save_history()
-        available = POSTS
-    post = random.choice(available)
-    used_posts.append(post)
-    save_history()
-    return post
+    posts = []
+    for article in articles:
+        text = article.get_text(separator=" ", strip=True)
+        text = text.replace("\n", " ").strip()
 
-def post_news():
-    post = choose_post()
-    text = f"{post}\n\n@zlyv_ai"
-    bot.send_message(CHANNEL_ID, text)
+        if 280 <= len(text) <= 450 and text not in posted_texts:
+            formatted_text = format_post(text)
+            posts.append(formatted_text)
 
-keep_alive()
-bot.send_message(CHANNEL_ID, "⚡ Старт автозливу. Далі — кожні 10 хв.\n@zlyv_ai")
+    return posts
 
-while True:
-    try:
-        post_news()
-    except Exception as e:
-        print(f"Error sending post: {e}")
-    time.sleep(600)  # 10 хв
+
+def format_post(text):
+    # Додай абзаци та підпис каналу
+    parts = text.split(". ")
+    if len(parts) > 1:
+        half = len(parts) // 2
+        text = ". ".join(parts[:half]) + ".\n\n" + ". ".join(parts[half:])
+    return text.strip() + "\n\n@zlyv_ai"
+
+
+def post_to_telegram():
+    posts = fetch_posts()
+    if posts:
+        post = random.choice(posts)
+        posted_texts.add(post)
+        bot.send_message(CHANNEL_ID, post)
+        print("✅ Post sent")
+    else:
+        print("⚠️ No new unique posts found.")
+
+
+if __name__ == '__main__':
+    while True:
+        post_to_telegram()
+        time.sleep(600)  # 10 хвилин
