@@ -13,8 +13,8 @@ TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 HISTORY_FILE = "post_history.json"
 MAX_POSTS_PER_DAY = 30
-POSTING_HOURS_START = 9    # З 9:00
-POSTING_HOURS_END = 21     # До 21:00
+POSTING_HOURS_START = 9
+POSTING_HOURS_END = 21
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
@@ -71,7 +71,7 @@ def generate_post(history):
         f"Підпис @zlyv_ai одразу під текстом, без пробілу. Не повторюй минулі пости, придумай щось нове. "
         f"{extra_humor}"
     )
-    for _ in range(6):
+    for _ in range(7):
         resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
