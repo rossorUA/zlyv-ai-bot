@@ -16,7 +16,7 @@ MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
 POSTING_HOURS_END = 21
 
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+client = openai.OpenAI()
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
 
 EMOJIS = ["🔥", "🤖", "💡", "✨", "🚀", "🧠", "⚡", "📢", "🌟", "🦾", "💻", "😎", "😏", "😁", "🎉", "😮"]
