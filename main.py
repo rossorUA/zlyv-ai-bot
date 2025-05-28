@@ -16,11 +16,10 @@ MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9    # З 9:00
 POSTING_HOURS_END = 21     # До 21:00
 
-openai.api_key = OPENAI_API_KEY
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
 
 EMOJIS = ["🔥", "🤖", "💡", "✨", "🚀", "🧠", "⚡", "📢", "🌟", "🦾", "💻", "😎", "😏", "😁", "🎉", "😮"]
-# Теми автогенеруються автоматично, але можна додати свої
 STATIC_THEMES = [
     "AI-новинки", "фреймворки", "інсайди", "нові інструменти", "Google", "GitHub", "меми для програмістів",
     "свіжі релізи", "лайфхаки", "open-source", "ProductHunt", "Bun, Deno, Next.js", "Qwik, Astro", "VS Code",
@@ -38,20 +37,15 @@ def save_history(history):
         json.dump(list(history), f, ensure_ascii=False)
 
 def fetch_fresh_news():
-    # Беремо свіжі заголовки з кількох джерел. Можна додати ще.
     try:
         news = []
-        # Hacker News (топ за день)
         hn = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=20").json()
         for hit in hn['hits']:
             title = hit['title']
             url = hit['url'] or hit.get('story_url', '')
             if title and url:
                 news.append(f"{title} ({url})")
-        # Product Hunt (API є, тут просто фейковий парсер для прикладу)
-        # news.append("Новий стартап на ProductHunt - OpenAI Tetris (https://www.producthunt.com/)")
-        # GitHub Trending (можна додати справжній парсер через BeautifulSoup)
-        return random.sample(news, min(5, len(news)))  # Беремо 5 випадкових новин
+        return random.sample(news, min(5, len(news)))
     except Exception as e:
         print("⚠️ Не вдалося отримати новини:", e)
         return []
@@ -77,15 +71,14 @@ def generate_post(history):
         f"Підпис @zlyv_ai одразу під текстом, без пробілу. Не повторюй минулі пости, придумай щось нове. "
         f"{extra_humor}"
     )
-    # Генерація посту через GPT
     for _ in range(6):
-        resp = openai.ChatCompletion.create(
+        resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=900,
             temperature=1.1
         )
-        post = resp.choices[0].message["content"].strip()
+        post = resp.choices[0].message.content.strip()
         post = post.replace("\n\n\n", "\n\n").replace(" @zlyv_ai", "\n@zlyv_ai").replace("\n @zlyv_ai", "\n@zlyv_ai")
         if post not in history and len(post) >= 340 and post.endswith("@zlyv_ai"):
             return post
@@ -97,12 +90,13 @@ def generate_image(post_text):
             f"Згенеруй сучасну унікальну картинку у різному стилі (арт, вектор, digital, ілюстрація) до цього авторського айтішного поста: \"{post_text[:100]}...\". "
             f"Без жодного тексту на зображенні. Сюжет має підходити під зміст тексту."
         )
-        dalle = openai.Image.create(
+        image_resp = client.images.generate(
+            model="dall-e-3",
             prompt=img_prompt,
             n=1,
             size="1024x1024"
         )
-        return dalle['data'][0]['url']
+        return image_resp.data[0].url
     except Exception as e:
         print("Не вдалося створити малюнок:", e)
         return None
@@ -119,7 +113,6 @@ def post_to_telegram(post_text, image_url=None):
         bot.send_message(TELEGRAM_CHANNEL_ID, post_text)
 
 def make_posting_times():
-    # Генеруємо 30 випадкових проміжків для публікацій на день
     minutes = (POSTING_HOURS_END - POSTING_HOURS_START) * 60
     points = sorted(random.sample(range(1, minutes-1), MAX_POSTS_PER_DAY - 1))
     times = [points[0]] + [points[i] - points[i-1] for i in range(1, len(points))] + [minutes - points[-1]]
@@ -145,7 +138,6 @@ def main():
             post = None
             while not post:
                 post = generate_post(history)
-            # Випадковий шанс додати малюнок (25-35%)
             image_url = generate_image(post) if random.random() < random.uniform(0.25, 0.35) else None
             post_to_telegram(post, image_url)
             print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Пост {idx+1}/30 надіслано!")
