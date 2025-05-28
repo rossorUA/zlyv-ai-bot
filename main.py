@@ -1,62 +1,70 @@
-from keep_alive import keep_alive
 import os
 import time
 import random
+import json
+import openai
 import requests
 from telebot import TeleBot
-from bs4 import BeautifulSoup
 
+# ======================
+# 1. Конфігурація
+# ======================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+HISTORY_FILE = "post_history.json"
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+bot = TeleBot(TELEGRAM_BOT_TOKEN)
+openai.api_key = OPENAI_API_KEY
 
-bot = TeleBot(TOKEN)
-posted_texts = set()
+THEMES = [
+    "Нові AI-інструменти для програмістів",
+    "Трендові фреймворки JavaScript",
+    "Лайфхаки з Python",
+    "Технологічні інсайди від Google",
+    "Меми та прикольні утиліти для розробки",
+    "Свіжі релізи Node.js, VS Code, TypeScript",
+    "Цікаві open-source проекти",
+    "AI-рішення для автоматизації роботи",
+    "Тренди розробки в 2025",
+    "Все, що бентежить сучасного розробника"
+    # Додавай свої теми!
+]
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
-}
+EMOJIS = ["🔥", "🤖", "💡", "✨", "🚀", "🧠", "⚡", "📢", "🌟", "🦾", "💻"]
 
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    return set()
 
-def fetch_posts():
-    url = "https://neural.love/blog"
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-    articles = soup.find_all("article")
+def save_history(history):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(history), f, ensure_ascii=False)
 
-    posts = []
-    for article in articles:
-        text = article.get_text(separator=" ", strip=True)
-        text = text.replace("\n", " ").strip()
+def generate_post():
+    theme = random.choice(THEMES)
+    prompt = (
+        f"Напиши унікальну, цікаву авторську новину українською мовою для Telegram-каналу про IT/AI та програмування. "
+        f"Тема: {theme}. Обовʼязково пиши не менше 350 символів, структуровано по абзацах, додавай живі думки, корисні поради, свіжі інсайди, прикольний авторський стиль. "
+        f"Використовуй багато emoji на кшталт {' '.join(EMOJIS)} для яскравого вигляду! Завжди завершуй підписом: @zlyv_ai. "
+        f"Пост має бути абсолютно новим, унікальним, ніде не використаним раніше. Додай, будь ласка, не менше трьох реальних абзаців (кожен на новий рядок)."
+    )
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",  # або "gpt-3.5-turbo" якщо немає доступу до gpt-4
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=800,
+        temperature=1
+    )
+    return response.choices[0].message["content"].strip()
 
-        if 280 <= len(text) <= 450 and text not in posted_texts:
-            formatted_text = format_post(text)
-            posts.append(formatted_text)
-
-    return posts
-
-
-def format_post(text):
-    # Додай абзаци та підпис каналу
-    parts = text.split(". ")
-    if len(parts) > 1:
-        half = len(parts) // 2
-        text = ". ".join(parts[:half]) + ".\n\n" + ". ".join(parts[half:])
-    return text.strip() + "\n\n@zlyv_ai"
-
-
-def post_to_telegram():
-    posts = fetch_posts()
-    if posts:
-        post = random.choice(posts)
-        posted_texts.add(post)
-        bot.send_message(CHANNEL_ID, post)
-        print("✅ Post sent")
-    else:
-        print("⚠️ No new unique posts found.")
-
-
-if __name__ == '__main__':
-    while True:
-        post_to_telegram()
-        time.sleep(600)  # 10 хвилин
+def generate_image(post_text):
+    prompt = (
+        f"Згенеруй унікальну ілюстрацію для Telegram-поста на тему: \"{post_text[:100]}...\" "
+        f"у стилі сучасного digital-art для IT/AI-каналу. Без тексту."
+    )
+    dalle_response = openai.Image.create(
+        prompt=prompt,
+        n=1,
+        si
