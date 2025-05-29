@@ -17,7 +17,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
-POSTING_HOURS_END = 21
+POSTING_HOURS_END = 24   # <- До 00:00
+
 MIN_POST_LEN = 250
 MAX_POST_LEN = 350
 
@@ -99,7 +100,7 @@ def paraphrase_text(title, url):
         extra = "\n" + random.choice(EXTRA_IDEAS)
     prompt = (
         "Ти — редактор українського Telegram-каналу для айтішників. Пиши тільки українською. "
-        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (250–350 символів), не згадуючи сайти, бренди, посилання, хештеги чи заклики до реєстрації. "
+        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (250–350 символів), без заголовків, без теми, не згадуючи сайти, бренди, посилання, хештеги чи заклики до реєстрації. "
         "Не копіюй заголовок, не вигадуй неіснуючі сервіси, не вставляй рекламу чи підписки. "
         "Просто зроби короткий авторський огляд/думку/реакцію на новинку – без реклами, без питань у кінці, без банальних фраз і без назв сайтів. "
         "Додавай смайли, легкий гумор, лайфхак, прикол, короткий аналіз, але тільки по темі IT, AI, програмування."
@@ -141,17 +142,15 @@ def should_send_image():
     return random.randint(1, 5) == 3
 
 def generate_caption(news, emojis):
-    theme = random.choice(STATIC_THEMES)
-    emoji = random.choice(EMOJIS)
-    intro = f"{emoji} {theme.upper()}"
+    # Без заголовків і тем
     text = paraphrase_text(news["title"], news["url"])
-    # Мемний абзац не дублюється підряд (додаємо лише один раз, не спамимо)
+    # Мемний абзац іноді
     if random.random() < 0.45:
         text += "\n\n" + random.choice(MEME_LINES)
-    # Емодзі у кінець або середину
+    # Емодзі ще у кінець або середину
     if random.random() < 0.5:
         text += " " + random.choice(EMOJIS)
-    return f"{intro}\n\n{text}\n{SIGNATURE}", theme
+    return f"{text}\n{SIGNATURE}", random.choice(STATIC_THEMES)
 
 def generate_ai_image(news, theme):
     try:
