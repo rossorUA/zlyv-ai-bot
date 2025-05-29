@@ -19,24 +19,13 @@ MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
 POSTING_HOURS_END = 24  # до 00:00
 
-MIN_POST_LEN = 100
+MIN_POST_LEN = 250
 MAX_POST_LEN = 350
 
 HISTORY_FILE = "post_history.json"
 EMOJIS = [
     '🔥', '🤖', '🦾', '🚀', '🧠', '✨', '💡', '😎', '🎉', '🌟', '📱', '🛠', '👾',
     '📊', '💻', '📢', '⚡️', '👨‍💻', '😏', '🥸', '🔮', '🕹️', '🦉', '🎲', '🧩', '🧑‍💻'
-]
-SIGNATURE = "\n@zlyv_ai"
-
-STYLE_PROMPTS = [
-    "pixel art, vibrant, detailed",
-    "vector illustration, flat, modern, bright",
-    "photo-realistic, realistic lighting, office, workspace, real people, computers",
-    "3d render, modern, shiny, real office",
-    "minimalist, clean, sharp, IT team, desk",
-    "retro computer art, 90s style, tech room",
-    "mem-style, fun, ironic, programmers at work"
 ]
 
 MEME_LINES = [
@@ -60,14 +49,11 @@ EXTRA_IDEAS = [
     "Реальні кейси вже на GitHub. 🔥"
 ]
 
-# Ключові слова — тільки свіжа техно/AI/Dev тематика!
-KEYWORDS = [
-    "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
-    "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
-    "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
-    "go", "java", "c++", "cpp", "data", "postgres", "sql", "macos", "windows",
-    "edge", "firefox", "chrome", "neural", "llm", "gemini", "deepmind", "copilot",
-    "langchain", "huggingface", "pytorch", "tensorflow", "astro", "bun", "deno"
+SIGNATURE = "\n@zlyv_ai"
+
+BAD_ENDINGS = [
+    "можливість", "пристрій", "новина", "реліз", "версія", "фіча", "апдейт",
+    "оновлення", "випуск", "інструмент", "доповнення", "модуль", "додаток", "…"
 ]
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -91,35 +77,21 @@ def fetch_fresh_news():
         for hit in data.get("hits", []):
             if hit.get("title") and hit.get("url"):
                 title = hit["title"].lower()
-                # Суворий фільтр по ключах (тільки справді актуальні IT/AI/Dev)
-                if any(kw in title for kw in KEYWORDS):
+                # Останні технологічні та AI/Dev новини (фільтр)
+                if any(
+                    kw in title for kw in [
+                        "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
+                        "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
+                        "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
+                        "go", "java", "c++", "cpp", "data", "postgres", "sql", "macos", "windows",
+                        "openai", "deepmind", "gemini", "bard", "neural", "model", "gpt", "huggingface"
+                    ]
+                ):
                     news.append({"title": hit["title"], "url": hit["url"]})
         random.shuffle(news)
     except Exception as e:
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
-
-def ensure_abzac(text):
-    # Якщо GPT забув про абзаци, розділимо по точках
-    if '\n' in text:
-        return text
-    sentences = re.split(r'(?<=[.?!])\s+', text)
-    if len(sentences) > 2:
-        return sentences[0] + '\n\n' + ' '.join(sentences[1:])
-    elif len(sentences) > 1:
-        return sentences[0] + '\n\n' + sentences[1]
-    return text
-
-def insert_emoji(text):
-    # Якщо GPT не вставив емодзі, вставляємо в друге речення
-    if any(e in text for e in EMOJIS):
-        return text
-    sentences = re.split(r'(?<=[.?!])\s+', text)
-    if len(sentences) > 1:
-        sentences[1] = random.choice(EMOJIS) + " " + sentences[1]
-        return sentences[0] + ' ' + sentences[1] + ' ' + ' '.join(sentences[2:])
-    else:
-        return text + " " + random.choice(EMOJIS)
 
 def extend_to_min_length(text, min_len=250, max_len=350):
     unique_memes = [x for x in MEME_LINES + EXTRA_IDEAS if x not in text]
@@ -137,6 +109,13 @@ def extend_to_min_length(text, min_len=250, max_len=350):
         text = text[:last_space] + "…"
     return text.strip()
 
+def clean_ending(text):
+    # Прибрати беззмістовні/незавершені кінцівки
+    last_word = text.strip().split()[-1].strip('.').strip('…').lower() if text.strip().split() else ''
+    if last_word in BAD_ENDINGS or text.strip().endswith('…'):
+        text = text.rstrip('…').rstrip('.') + ".\n\nЩе з таким апдейтом кодити — одне задоволення! " + random.choice(EMOJIS)
+    return text
+
 def paraphrase_text(title, url):
     extra = ""
     if random.random() < 0.3:
@@ -153,61 +132,35 @@ def paraphrase_text(title, url):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=340,
-            temperature=1.15
+            max_tokens=320,
+            temperature=1.2
         )
         text = response.choices[0].message.content.strip()
+        # Чистка від зайвого (бренди, лінки, повтори)
         text = re.sub(r'http\S+', '', text)
         text = re.sub(r'#\w+', '', text)
         text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
         text = re.sub(r'\n+', '\n', text)
         text = text.replace('  ', ' ')
-        text = ensure_abzac(text)
-        text = insert_emoji(text)
         text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
+        # ГАРАНТУЄМО абзаци
+        if '\n' not in text:
+            words = text.split()
+            if len(words) > 40:
+                text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
+        # Якісний фінал
+        text = clean_ending(text)
+        # Додаємо трохи emoji у текст, якщо їх немає
+        if all(e not in text for e in EMOJIS):
+            text += " " + random.choice(EMOJIS)
         return text.strip()
     except Exception as e:
         print(f"[ERROR] paraphrase_text: {e}")
         return title  # fallback
 
-def random_style_prompt(title):
-    # Стиль під конкретну новину, якщо є слова "cloud" то робимо хмару, якщо linux – комп'ютери тощо
-    lower = title.lower()
-    if "cloud" in lower:
-        return "photo-realistic, cloud data center, office, people, digital, high detail"
-    if "linux" in lower or "bsd" in lower:
-        return "photo-realistic, developers, workstations, open-source office, monitors"
-    if "ai" in lower or "neural" in lower:
-        return "photo-realistic, people with laptops, neural networks, digital screen, IT office"
-    if "github" in lower or "open source" in lower:
-        return "3d render, programmers at desk, github logos, computers"
-    if "framework" in lower:
-        return "vector illustration, web app, UI screens, designers at work"
-    # ...
-    # Додавай ще логіку під свої потреби
-    return random.choice(STYLE_PROMPTS)
-
-def should_send_image():
-    return random.randint(1, 5) == 3
-
-def generate_caption(news, emojis):
+def generate_caption(news):
     text = paraphrase_text(news["title"], news["url"])
-    return f"{text}\n{SIGNATURE}", random_style_prompt(news["title"])
-
-def generate_ai_image(news, style_prompt):
-    try:
-        prompt = f"{news['title']}, {style_prompt}"
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            n=1,
-            size="1024x1024"
-        )
-        image_url = response.data[0].url
-        return image_url
-    except Exception as e:
-        print(f"[ERROR] generate_ai_image: {e}")
-        return None
+    return f"{text}\n{SIGNATURE}"
 
 def post_news():
     history = load_history()
@@ -216,19 +169,10 @@ def post_news():
     for news in news_list:
         print(f"[DEBUG] Перевіряю: {news['title']}")
         if news["title"] not in history and news["title"]:
-            caption, style_prompt = generate_caption(news, EMOJIS)
+            caption = generate_caption(news)
             try:
-                if should_send_image():
-                    img_url = generate_ai_image(news, style_prompt)
-                    if img_url:
-                        bot.send_photo(TELEGRAM_CHANNEL_ID, img_url, caption=caption)
-                        print(f"[SUCCESS] Пост із малюнком надіслано: {caption[:60]}")
-                    else:
-                        bot.send_message(TELEGRAM_CHANNEL_ID, caption)
-                        print(f"[SUCCESS] Пост без малюнка надіслано: {caption[:60]}")
-                else:
-                    bot.send_message(TELEGRAM_CHANNEL_ID, caption)
-                    print(f"[SUCCESS] Пост без малюнка надіслано: {caption[:60]}")
+                bot.send_message(TELEGRAM_CHANNEL_ID, caption)
+                print(f"[SUCCESS] Пост надіслано: {caption[:60]}")
                 history.add(news["title"])
                 save_history(history)
             except Exception as e:
