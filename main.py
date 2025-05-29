@@ -76,7 +76,8 @@ def generate_caption(news, emojis):
 
 def post_news():
     history = load_history()
-    news_list = fetch_fresh_news()
+    news_list = news_list = [{"title": "Супер тестова новина!", "url": "http://test.com"}]
+#fetch_fresh_news()
     for news in news_list:
         if news["title"] not in history and news["title"]:
             caption = generate_caption(news, EMOJIS)
