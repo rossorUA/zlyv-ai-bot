@@ -86,7 +86,7 @@ def post_news():
             print("Пост надіслано:", caption[:50])
             break  # Один пост за цикл
 
-bot.send_message(TELEGRAM_CHANNEL_ID, "🤖 Перевірка: Бот працює?")
+#bot.send_message(TELEGRAM_CHANNEL_ID, "🤖 Перевірка: Бот працює?")
 
 
 if __name__ == "__main__":
