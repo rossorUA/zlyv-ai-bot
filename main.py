@@ -28,28 +28,6 @@ EMOJIS = [
     '🔥', '🤖', '🦾', '🚀', '🧠', '✨', '💡', '😎', '🎉', '🌟', '📱', '🛠', '👾',
     '📊', '💻', '📢', '⚡️', '👨‍💻', '😏', '🥸', '🔮', '🕹️', '🦉', '🎲', '🧩', '🧑‍💻'
 ]
-
-MEME_LINES = [
-    "Пиши, якщо вже юзаєш це в продакшн 😅",
-    "З такою новиною навіть понеділок не страшний 💪",
-    "Залипай за компом – і не забудь зробити каву ☕️",
-    "Відклади мишку, час апгрейднути мозок 🧠",
-    "В нашому каналі тільки реально свіже, без корпоративної води 🥤",
-    "Якщо дочитав – ти реально шариш 😉",
-    "З таким апдейтом навіть код рев’ю здається легким 👀",
-    "Фух, ну це вже next level! 🚀",
-    "Не забувай: код фіксить баги, а новини — настрій! 😏",
-    "Читаєш таке – і сам собі DevOps 🦉",
-    "Хто не слідкує за трендами — той дебажить продакшн 😂"
-]
-
-EXTRA_IDEAS = [
-    "Лайфхак: не чекай апдейту — тестуй одразу! 🦾",
-    "Коротко: розробники вже це імплементують у продакшн.",
-    "Бонус: швидкий тул для автоматизації – зекономить час кожному деву.",
-    "Реальні кейси вже на GitHub. 🔥"
-]
-
 SIGNATURE = "\n@zlyv_ai"
 
 IT_KEYWORDS = [
@@ -57,15 +35,15 @@ IT_KEYWORDS = [
     "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
     "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
     "go", "java", "c++", "cpp", "data", "postgres", "sql", "macos", "windows",
-    "openai", "deepmind", "gemini", "bard", "neural", "model", "gpt", "huggingface"
+    "openai", "deepmind", "gemini", "bard", "neural", "model", "gpt", "huggingface",
+    "plugin", "sdk", "cli", "бібліотека", "утиліта", "middleware", "package"
 ]
 
-# Слова для жорсткого IT/AI фільтра: головна фіча, реліз, API, бібліотека, продукт, оновлення, open-source
+# Фільтр тільки по НОВИХ ІНСТРУМЕНТАХ, БІБЛІОТЕКАХ, АІ/API/FW, релізах
 IT_STRICT_MUSTHAVE = [
-    "новий фреймворк", "реліз", "новий api", "оновлення", "додаток", "бібліотека", "інструмент", 
-    "open-source", "оновлення", "main feature", "update", "core feature", "release", "launch", 
-    "AI модель", "ML модель", "оптимізація", "продукт", "developer tool", "дев тул", "toolkit",
-    "плагін", "plugin", "sdk", "cli", "python пакет", "npm пакет", "typescript утиліта", "нейромережа"
+    "новий інструмент", "бібліотека", "api", "оновлення", "додаток", "утиліта", "open-source",
+    "реліз", "release", "plugin", "sdk", "cli", "feature", "framework", "ai модель", "ai tool",
+    "ml tool", "dev tool", "developer tool", "ai api", "library", "middleware", "package"
 ]
 
 BAD_ENDINGS = [
@@ -89,7 +67,7 @@ def save_history(history):
 def fetch_fresh_news():
     news = []
     try:
-        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=100", timeout=10)
+        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=120", timeout=10)
         data = resp.json()
         for hit in data.get("hits", []):
             if hit.get("title") and hit.get("url"):
@@ -101,15 +79,22 @@ def fetch_fresh_news():
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
 
+def is_really_technical(text):
+    # Пост тільки про інструмент/бібліотеку/AI/API/плагін — без філософії, Марса, Meta, IT-лайфстайлу
+    lower = text.lower()
+    if not any(mh in lower for mh in IT_STRICT_MUSTHAVE):
+        return False
+    bad = ['ілон', 'маск', 'meta', 'facebook', 'apple', 'королева', 'трамп', 'політика', 'covid', 'енергія', 'марс', 'тесла', 'життя', 'здоров\'я', 'lifestyle', 'planet', 'новина дня']
+    if any(b in lower for b in bad):
+        return False
+    # Якщо нема короткого пояснення — не публікувати
+    if not re.search(r"(для |яка|дозволяє|щоб |як |що |api|інструмент|бібліотека|утиліта|framework|plugin|sdk)", lower):
+        return False
+    return True
+
 def extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN):
-    unique_memes = [x for x in MEME_LINES + EXTRA_IDEAS if x not in text]
-    i = 0
-    while len(text) < min_len and i < len(unique_memes):
-        addition = " " + unique_memes[i]
-        if len(text) + len(addition) > max_len:
-            break
-        text += addition
-        i += 1
+    if len(text) < min_len:
+        text += " " + random.choice(EMOJIS)
     if len(text) > max_len:
         last_space = text.rfind(' ', 0, max_len)
         if last_space == -1:
@@ -120,65 +105,41 @@ def extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN):
 def clean_ending(text):
     last_word = text.strip().split()[-1].strip('.').strip('…').lower() if text.strip().split() else ''
     if last_word in BAD_ENDINGS or text.strip().endswith('…'):
-        text = text.rstrip('…').rstrip('.') + ".\n\n" + random.choice(MEME_LINES)
+        text = text.rstrip('…').rstrip('.') + "."
     return text
 
-def is_strictly_it(text):
-    # Відсікти все, що не суто про айті/AI інструменти/фічі/релізи/бібліотеки
-    lower = text.lower()
-    # Має бути хоча б одне слово із IT_KEYWORDS і хоча б одне з IT_STRICT_MUSTHAVE
-    if not any(kw in lower for kw in IT_KEYWORDS):
-        return False
-    if not any(mh in lower for mh in IT_STRICT_MUSTHAVE):
-        return False
-    # Викидаємо всі загальні, життєві, "Elon", "Meta", і все, що не dev/ai/soft
-    bad = ['ілон', 'маск', 'meta', 'facebook', 'apple', 'королева', 'трамп', 'політика', 'covid', 'енергія', 'марс', 'тесла', 'життя', 'здоров\'я', 'lifestyle', 'planet', 'новина дня']
-    if any(b in lower for b in bad):
-        return False
-    return True
-
 def paraphrase_text(title, url):
-    extra = ""
-    if random.random() < 0.3:
-        extra = "\n" + random.choice(EXTRA_IDEAS)
     prompt = (
         "Ти — редактор Telegram-каналу для айтішників. Пиши тільки українською! "
-        "Використовуй велику і малу літери, не копіюй заголовок! "
-        "Тільки про новий інструмент, фреймворк, бібліотеку, реліз, open-source або AI продукт. "
-        "Пиши конкретно: що саме з’явилося, яка фіча чи реліз, для кого, яка користь, для чого це девам/AI. "
-        "Жодної води, філософії, загальних роздумів, без брендів (крім назв софту, наприклад PyTorch, GitHub, Copilot, Huggingface, GPT). "
-        "Пост має бути строго по суті, в 2 коротких абзацах, із emoji, мінімум 100 символів, завершене речення!"
-        f"\nОсь новина:\n{title}{extra}"
+        "Без жодної води, тільки новий інструмент, бібліотека, фреймворк, API, AI-продукт, реліз чи апдейт. "
+        "Опиши для чого цей продукт, для кого, головну фічу або API, як юзати (1-2 речення), максимум конкретики. "
+        "Не згадуй бренди, людей, політику, не пиши філософію, тільки технічна суть. "
+        "Пиши у 1-2 абзацах, з emoji, мінімум 100 символів, закінчуй реченням, не обривай пост!"
+        "\nОсь новина:\n" + title
     )
-    for _ in range(3):  # до 3 спроб
+    for _ in range(4):  # до 4 спроб
         try:
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=350,
-                temperature=1.0
+                temperature=0.8
             )
             text = response.choices[0].message.content.strip()
             text = re.sub(r'http\S+', '', text)
             text = re.sub(r'#\w+', '', text)
-            text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
             text = re.sub(r'\n+', '\n', text)
             text = text.replace('  ', ' ')
             text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
-            if '\n' not in text:
-                words = text.split()
-                if len(words) > 32:
-                    text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
-            text = clean_ending(text)
             if all(e not in text for e in EMOJIS):
                 text += " " + random.choice(EMOJIS)
-            # Строгий AI/IT/Dev фільтр: тільки для інструментів/релізів/продуктів
-            if not is_strictly_it(text):
-                raise Exception("Не IT/AI інструмент, фільтр!")
+            text = clean_ending(text)
+            if not is_really_technical(text):
+                continue  # тільки реальні інструменти, жодної води
             if not text.endswith('.') and not text.endswith('!') and not text.endswith('?'):
                 text += "."
-            if len(text) < MIN_POST_LEN or "..." in text[-4:]:
-                continue  # Спробуємо ще раз
+            if len(text) < MIN_POST_LEN:
+                continue
             return text.strip()
         except Exception as e:
             print(f"[ERROR] paraphrase_text: {e}")
