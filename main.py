@@ -24,6 +24,19 @@ POSTING_HOURS_END = 21
 MIN_SYMBOLS = 200  # мінімум 200 букв у новині
 SIGNATURE = "@zlyv_ai"
 
+EMOJIS = [
+    "🔥", "🚀", "💡", "🤖", "🧠", "🌟", "⚡️", "✨", "🎯", "🦾", "💥", "🧩", "📣", "📝", "😎",
+    "🥳", "👾", "🕹️", "💻", "🧑‍💻", "👨‍💻", "👩‍💻", "🎉"
+]
+PIKA_JOKES = [
+    "Реально кайфую з цієї новини! 😎",
+    "Ну тут навіть ШІ офігів би 🤖",
+    "Така новина, що навіть робот задумався... 🦾",
+    "Інфа, яка заслуговує на зберегти в закладки! ⭐️",
+    "Мій нейрончик від такої новини аж загорівся 🔥"
+]
+# Сюди можна додавати ще свої приколи!
+
 def load_history():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
@@ -48,23 +61,32 @@ def fetch_fresh_news():
             description = item.description.text if item.description else ""
             link = item.link.text
             source_text = f"{title}. {description}\n\n{link}"
+
+            # Додаємо випадковий жарт/смайлик/вогник в prompt для креативу
+            emoji = random.choice(EMOJIS)
+            joke = random.choice(PIKA_JOKES) if random.random() < 0.2 else ""
+
             prompt = (
                 f"Перепиши цю новину для Telegram-каналу іншими словами українською мовою, "
-                f"зберігаючи суть, додай емодзі, справжні абзаци, легку жартівливість. "
-                f"Мінімум 200 букв (без пробілів). Не додавай закликів до коментарів або відгуків. "
+                f"зберігаючи суть, додай багато сучасних емодзі, справжні абзаци, "
+                f"легку жартівливість. Мінімум 200 букв (без пробілів). "
+                f"Не додавай закликів до коментарів або відгуків. "
                 f"Підпис обовʼязково — {SIGNATURE} в самому кінці. "
-                f"Текст тільки для Telegram, без заголовка. Ось новина:\n\n{source_text}"
+                f"{joke}\nТекст тільки для Telegram, без заголовка. Ось новина:\n\n{source_text}"
             )
             response = client.chat.completions.create(
-                model="gpt-4o",  # або gpt-3.5-turbo
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=1,
-                max_tokens=320,  # цього більш ніж достатньо
+                temperature=1.1,
+                max_tokens=340,
             )
             news = response.choices[0].message.content.strip()
-            news = news.rstrip(".")  # прибираємо обрізані крапки
+            news = news.rstrip(".")
             if not news.endswith(SIGNATURE):
                 news = news + "\n\n" + SIGNATURE
+            # Додаємо смайлик на початок поста, якщо GPT не додав
+            if not any(e in news[:10] for e in EMOJIS):
+                news = emoji + " " + news
             # Рахуємо тільки букви (без пробілів)
             news_symbols = len("".join([c for c in news if c.isalpha()]))
             if news_symbols >= MIN_SYMBOLS:
@@ -74,9 +96,36 @@ def fetch_fresh_news():
         print(f"❌ OpenAI/News fetch error: {e}")
         return None
 
-def post_to_telegram(text):
-    bot.send_message(TELEGRAM_CHANNEL_ID, text)
-    print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Пост надіслано!")
+def generate_dalle_image(news_text):
+    # Стиль рандомно: мем, вектор, айті, креатив
+    styles = [
+        "vector illustration", "digital art", "cyberpunk style", "funny meme", "pixel art",
+        "3d render", "futuristic", "techno art", "cartoon", "realistic", "anime style"
+    ]
+    style = random.choice(styles)
+    dalle_prompt = (
+        f"Create a {style} for the topic: {news_text[:80]}."
+        f" Make it modern, creative, colorful, and IT/AI themed."
+    )
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=dalle_prompt,
+            n=1,
+            size="1024x1024"
+        )
+        return response.data[0].url
+    except Exception as e:
+        print(f"❌ DALL-E error: {e}")
+        return None
+
+def post_to_telegram(text, image_url=None):
+    if image_url:
+        bot.send_photo(TELEGRAM_CHANNEL_ID, image_url, caption=text)
+        print(f"🖼️ [{datetime.datetime.now().strftime('%H:%M:%S')}] Картинка + пост надіслані!")
+    else:
+        bot.send_message(TELEGRAM_CHANNEL_ID, text)
+        print(f"✅ [{datetime.datetime.now().strftime('%H:%M:%S')}] Пост надіслано!")
 
 def random_delay():
     return random.randint(600, 3600)
@@ -108,7 +157,13 @@ def main():
             time.sleep(300)
             continue
 
-        post_to_telegram(post)
+        # Кожне 8-ме повідомлення з DALL-E
+        image_url = None
+        if (post_count + 1) % 8 == 0:
+            image_url = generate_dalle_image(post)
+            if not image_url:
+                print("❗ Не вдалося отримати картинку, надсилаю тільки текст.")
+        post_to_telegram(post, image_url)
         history.add(post)
         save_history(history)
         post_count += 1
