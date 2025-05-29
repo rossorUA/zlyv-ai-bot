@@ -18,9 +18,9 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
-POSTING_HOURS_END = 24  # до 00:00
+POSTING_HOURS_END = 24
 
-MIN_POST_LEN = 100   # Можеш змінити на 250 якщо треба суворо
+MIN_POST_LEN = 100
 MAX_POST_LEN = 350
 
 HISTORY_FILE = "post_history.json"
@@ -60,6 +60,14 @@ IT_KEYWORDS = [
     "openai", "deepmind", "gemini", "bard", "neural", "model", "gpt", "huggingface"
 ]
 
+# Слова для жорсткого IT/AI фільтра: головна фіча, реліз, API, бібліотека, продукт, оновлення, open-source
+IT_STRICT_MUSTHAVE = [
+    "новий фреймворк", "реліз", "новий api", "оновлення", "додаток", "бібліотека", "інструмент", 
+    "open-source", "оновлення", "main feature", "update", "core feature", "release", "launch", 
+    "AI модель", "ML модель", "оптимізація", "продукт", "developer tool", "дев тул", "toolkit",
+    "плагін", "plugin", "sdk", "cli", "python пакет", "npm пакет", "typescript утиліта", "нейромережа"
+]
+
 BAD_ENDINGS = [
     "можливість", "пристрій", "новина", "реліз", "версія", "фіча", "апдейт",
     "оновлення", "випуск", "інструмент", "доповнення", "модуль", "додаток", "…"
@@ -81,12 +89,11 @@ def save_history(history):
 def fetch_fresh_news():
     news = []
     try:
-        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=80", timeout=10)
+        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=100", timeout=10)
         data = resp.json()
         for hit in data.get("hits", []):
             if hit.get("title") and hit.get("url"):
                 title = hit["title"].lower()
-                # Суворий фільтр по ключових IT словах, і тільки останні новини
                 if any(kw in title for kw in IT_KEYWORDS):
                     news.append({"title": hit["title"], "url": hit["url"]})
         random.shuffle(news)
@@ -116,14 +123,19 @@ def clean_ending(text):
         text = text.rstrip('…').rstrip('.') + ".\n\n" + random.choice(MEME_LINES)
     return text
 
-def it_is_very_news(text):
-    # Перевірка що в пості є ІТ-слова, і немає побуту, життєвих тем, відсилок на Маска, Meta тощо
-    bad = ['ілон', 'маск', 'марс', 'тесла', 'meta', 'facebook', 'apple', 'google play', 'samsung', 'королева', 'трамп', 'політика', 'вірус', 'covid', 'health', 'енергія', 'сонце', 'марсіанин', 'астронавт']
+def is_strictly_it(text):
+    # Відсікти все, що не суто про айті/AI інструменти/фічі/релізи/бібліотеки
     lower = text.lower()
+    # Має бути хоча б одне слово із IT_KEYWORDS і хоча б одне з IT_STRICT_MUSTHAVE
+    if not any(kw in lower for kw in IT_KEYWORDS):
+        return False
+    if not any(mh in lower for mh in IT_STRICT_MUSTHAVE):
+        return False
+    # Викидаємо всі загальні, життєві, "Elon", "Meta", і все, що не dev/ai/soft
+    bad = ['ілон', 'маск', 'meta', 'facebook', 'apple', 'королева', 'трамп', 'політика', 'covid', 'енергія', 'марс', 'тесла', 'життя', 'здоров\'я', 'lifestyle', 'planet', 'новина дня']
     if any(b in lower for b in bad):
         return False
-    # Має бути хоча б одне з IT_KEYWORDS
-    return any(kw in lower for kw in IT_KEYWORDS)
+    return True
 
 def paraphrase_text(title, url):
     extra = ""
@@ -132,39 +144,46 @@ def paraphrase_text(title, url):
     prompt = (
         "Ти — редактор Telegram-каналу для айтішників. Пиши тільки українською! "
         "Використовуй велику і малу літери, не копіюй заголовок! "
-        "Візьми цю новину і напиши конкретно по суті, що саме вийшло нового, яка головна фіча, що це дає розробникам або AI-ком’юніті, без філософії. "
-        "Не згадуй сайти, бренди, Elon Musk, політику, Meta, не вставляй підписки і рекламу, без води і не загальний життєвий пост! "
-        "Пиши у 2 абзацах, використовуй emoji. Мінімум 100 символів. "
+        "Тільки про новий інструмент, фреймворк, бібліотеку, реліз, open-source або AI продукт. "
+        "Пиши конкретно: що саме з’явилося, яка фіча чи реліз, для кого, яка користь, для чого це девам/AI. "
+        "Жодної води, філософії, загальних роздумів, без брендів (крім назв софту, наприклад PyTorch, GitHub, Copilot, Huggingface, GPT). "
+        "Пост має бути строго по суті, в 2 коротких абзацах, із emoji, мінімум 100 символів, завершене речення!"
         f"\nОсь новина:\n{title}{extra}"
     )
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=350,
-            temperature=1.0
-        )
-        text = response.choices[0].message.content.strip()
-        text = re.sub(r'http\S+', '', text)
-        text = re.sub(r'#\w+', '', text)
-        text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
-        text = re.sub(r'\n+', '\n', text)
-        text = text.replace('  ', ' ')
-        text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
-        if '\n' not in text:
-            words = text.split()
-            if len(words) > 32:
-                text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
-        text = clean_ending(text)
-        if all(e not in text for e in EMOJIS):
-            text += " " + random.choice(EMOJIS)
-        # Гарантуємо перевірку на IT та AI тематику!
-        if not it_is_very_news(text):
-            raise Exception("Не айті новина, фільтр!")
-        return text.strip()
-    except Exception as e:
-        print(f"[ERROR] paraphrase_text: {e}")
-        return None  # Якщо поганий пост — не відправляти
+    for _ in range(3):  # до 3 спроб
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=350,
+                temperature=1.0
+            )
+            text = response.choices[0].message.content.strip()
+            text = re.sub(r'http\S+', '', text)
+            text = re.sub(r'#\w+', '', text)
+            text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
+            text = re.sub(r'\n+', '\n', text)
+            text = text.replace('  ', ' ')
+            text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
+            if '\n' not in text:
+                words = text.split()
+                if len(words) > 32:
+                    text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
+            text = clean_ending(text)
+            if all(e not in text for e in EMOJIS):
+                text += " " + random.choice(EMOJIS)
+            # Строгий AI/IT/Dev фільтр: тільки для інструментів/релізів/продуктів
+            if not is_strictly_it(text):
+                raise Exception("Не IT/AI інструмент, фільтр!")
+            if not text.endswith('.') and not text.endswith('!') and not text.endswith('?'):
+                text += "."
+            if len(text) < MIN_POST_LEN or "..." in text[-4:]:
+                continue  # Спробуємо ще раз
+            return text.strip()
+        except Exception as e:
+            print(f"[ERROR] paraphrase_text: {e}")
+            continue
+    return None
 
 def generate_caption(news):
     text = paraphrase_text(news["title"], news["url"])
