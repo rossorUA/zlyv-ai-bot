@@ -82,7 +82,7 @@ def generate_caption(news, emojis):
     text = paraphrase_text(news["title"])
     # Гарантуємо довжину
     if len(text) < MIN_POST_LEN:
-        text = paraphrase_text(news["title"]) + " Що скажеш? 🤔"
+        text = paraphrase_text(news["title"]) + ""
     # Обрізаємо, якщо надто довгий текст
     if len(text) > MAX_POST_LEN:
         text = text[:MAX_POST_LEN - 1]  # обрізати до максимуму
