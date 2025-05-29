@@ -45,24 +45,35 @@ def save_history(history):
 
 def fetch_fresh_news():
     news = []
-    resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30")
-    for hit in resp.json().get("hits", []):
-        news.append({"title": hit["title"], "url": hit["url"]})
-    random.shuffle(news)
+    try:
+        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30", timeout=10)
+        print(f"[DEBUG] Статус код: {resp.status_code}")
+        data = resp.json()
+        for hit in data.get("hits", []):
+            if hit.get("title") and hit.get("url"):
+                news.append({"title": hit["title"], "url": hit["url"]})
+        random.shuffle(news)
+        print(f"[DEBUG] Новин зібрано: {len(news)}")
+    except Exception as e:
+        print(f"[ERROR] fetch_fresh_news: {e}")
     return news
 
 def paraphrase_text(text):
-    messages = [
-        {"role": "system", "content": "Перепиши цей текст коротко, цікаво та людською мовою, як справжній редактор для Telegram-каналу, без зайвої офіційності та води."},
-        {"role": "user", "content": text}
-    ]
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        max_tokens=120,
-        temperature=1.1
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        messages = [
+            {"role": "system", "content": "Перепиши цей текст коротко, цікаво та людською мовою, як справжній редактор для Telegram-каналу, без зайвої офіційності та води."},
+            {"role": "user", "content": text}
+        ]
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=120,
+            temperature=1.1
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[ERROR] paraphrase_text: {e}")
+        return text  # fallback, просто повертає оригінал
 
 def generate_caption(news, emojis):
     theme = random.choice(STATIC_THEMES)
@@ -76,19 +87,22 @@ def generate_caption(news, emojis):
 
 def post_news():
     history = load_history()
-    news_list = news_list = [{"title": "Супер тестова новина!", "url": "http://test.com"}]
-#fetch_fresh_news()
+    news_list = fetch_fresh_news()
+    print(f"[DEBUG] Є {len(news_list)} новин")
     for news in news_list:
+        print(f"[DEBUG] Перевіряю: {news['title']}")
         if news["title"] not in history and news["title"]:
             caption = generate_caption(news, EMOJIS)
-            bot.send_message(TELEGRAM_CHANNEL_ID, caption)
-            history.add(news["title"])
-            save_history(history)
-            print("Пост надіслано:", caption[:50])
-            break  # Один пост за цикл
-
-#bot.send_message(TELEGRAM_CHANNEL_ID, "🤖 Перевірка: Бот працює?")
-
+            try:
+                bot.send_message(TELEGRAM_CHANNEL_ID, caption)
+                print(f"[SUCCESS] Пост надіслано: {caption[:50]}")
+                history.add(news["title"])
+                save_history(history)
+            except Exception as e:
+                print(f"[ERROR] post_news: {e}")
+            break
+    else:
+        print("[DEBUG] Нових новин для публікації немає.")
 
 if __name__ == "__main__":
     while True:
