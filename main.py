@@ -83,11 +83,12 @@ def generate_caption(news, emojis):
 if __name__ == "__main__":
     while True:
         try:
-            # твоя функція надсилання новин, наприклад:
+            # Це твоя основна функція, яка шукає новину і постить у канал
             post_news()
         except Exception as e:
-            print(f"Error: {e}")
-        time.sleep(600)  # чекати 10 хвилин між постами
+            print(f"Сталася помилка: {e}")
+        time.sleep(600)  # 600 секунд = 10 хвилин між постами
+
 
 
 
