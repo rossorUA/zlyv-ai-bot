@@ -1,4 +1,5 @@
-openai>=1.0.0
 pyTelegramBotAPI
 requests
 flask
+beautifulsoup4
+openai
