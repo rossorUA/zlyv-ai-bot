@@ -17,7 +17,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
-POSTING_HOURS_END = 24   # <- До 00:00
+POSTING_HOURS_END = 24  # до 00:00
 
 MIN_POST_LEN = 250
 MAX_POST_LEN = 350
@@ -28,12 +28,6 @@ EMOJIS = [
     '📊', '💻', '📢', '⚡️', '👨‍💻', '😏', '🥸', '🔮', '🕹️', '🦉', '🎲', '🧩', '🧑‍💻'
 ]
 SIGNATURE = "\n@zlyv_ai"
-
-STATIC_THEMES = [
-    "AI-новинки", "фреймворки", "інсайди", "нові інструменти", "Google", "GitHub", "лайфхаки",
-    "open-source", "Bun", "Deno", "Next.js", "Qwik", "Astro", "VS Code",
-    "Copilot", "аналітика", "тренди", "DevTools", "Linux", "API", "Cloud", "ML"
-]
 
 STYLE_PROMPTS = [
     "pixel art, vibrant, detailed",
@@ -60,12 +54,10 @@ MEME_LINES = [
 ]
 
 EXTRA_IDEAS = [
-    "Бонус: маленький лайфхак — виділи 10 хвилин на нову фічу! 💡",
-    "Тримай інтригу: наступна новина вже гріє повітря в інтернеті 😉",
-    "Короткий аналіз: розробники вже тестують це в своїх pet-проектах! 🧩",
-    "Мем дня: 'Коли хотів переписати legacy-код — а отримав новий фреймворк!' 🤣",
-    "Fun fact: в 2025 році такі штуки будуть must-have для кожного девелопера! 🚀",
-    "Жарт: справжній dev не шукає баги — баги самі знаходять його! 🥸"
+    "Лайфхак: не чекай апдейту — тестуй одразу! 🦾",
+    "Коротко: розробники вже це імплементують у продакшн.",
+    "Бонус: швидкий тул для автоматизації – зекономить час кожному деву.",
+    "Реальні кейси вже на GitHub. 🔥"
 ]
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -87,38 +79,48 @@ def fetch_fresh_news():
         resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=50", timeout=10)
         data = resp.json()
         for hit in data.get("hits", []):
+            # Беремо тільки технологічні новини (зазвичай є в title)
             if hit.get("title") and hit.get("url"):
-                news.append({"title": hit["title"], "url": hit["url"]})
+                title = hit["title"].lower()
+                # Фільтр – залишаємо тільки ІТ/AI/Software/програмування/стартапи
+                if any(
+                    kw in title for kw in [
+                        "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
+                        "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
+                        "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
+                        "go", "java", "c++", "cpp", "data", "postgres", "sql", "api", "macos", "windows"
+                    ]
+                ):
+                    news.append({"title": hit["title"], "url": hit["url"]})
         random.shuffle(news)
     except Exception as e:
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
 
 def paraphrase_text(title, url):
+    # Суперпідказка для GPT: максимум конкретики, нуль води, тільки по темі ІТ, AI, розробка
     extra = ""
-    if random.random() < 0.33:
+    if random.random() < 0.3:
         extra = "\n" + random.choice(EXTRA_IDEAS)
     prompt = (
-        "Ти — редактор українського Telegram-каналу для айтішників. Пиши тільки українською. "
-        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (250–350 символів), без заголовків, без теми, не згадуючи сайти, бренди, посилання, хештеги чи заклики до реєстрації. "
-        "Не копіюй заголовок, не вигадуй неіснуючі сервіси, не вставляй рекламу чи підписки. "
-        "Просто зроби короткий авторський огляд/думку/реакцію на новинку – без реклами, без питань у кінці, без банальних фраз і без назв сайтів. "
-        "Додавай смайли, легкий гумор, лайфхак, прикол, короткий аналіз, але тільки по темі IT, AI, програмування."
-        " Ось новина:\n"
-        f"{title}\n{extra}"
+        "Ти — редактор Telegram-каналу для айтішників. Пиши тільки українською. "
+        "Візьми цю новину і напиши коротко по суті, що сталося, яку проблему вирішує, що це дає девам, "
+        "яка основна фіча/користь/фішка, без філософії, без питань і ліричних відступів. "
+        "Пиши у 2–3 абзацах, роби абзаци! Не згадуй сайт чи бренд, не вставляй хештеги чи підписки. "
+        "Не пиши 'можливо це стане трендом', не міркуй – тільки факти або реальні враження від розробників."
+        f"\nОсь новина:\n{title}{extra}"
     )
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=250,
-            temperature=1.35
+            max_tokens=280,
+            temperature=1.2
         )
         text = response.choices[0].message.content.strip()
-        # Чистка тексту від брендів/посилань/спаму
+        # Чистка від зайвого (бренди, лінки, повтори)
         text = re.sub(r'http\S+', '', text)
         text = re.sub(r'#\w+', '', text)
-        text = re.sub(r'\s+([.,!?])', r'\1', text)
         text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
         text = re.sub(r'\n+', '\n', text)
         text = text.replace('  ', ' ')
@@ -126,6 +128,12 @@ def paraphrase_text(title, url):
             text = text[:MAX_POST_LEN-1] + "…"
         if len(text) < MIN_POST_LEN:
             text += " " + random.choice(MEME_LINES)
+        # ГАРАНТУЄМО абзаци
+        if '\n' not in text:
+            # Штучно розбиваємо на 2 абзаци (по середині фрази)
+            words = text.split()
+            if len(words) > 32:
+                text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
         return text.strip()
     except Exception as e:
         print(f"[ERROR] paraphrase_text: {e}")
@@ -138,23 +146,16 @@ def random_style_prompt(theme):
     return full
 
 def should_send_image():
-    # Кожен 3-5 пост – з малюнком
     return random.randint(1, 5) == 3
 
 def generate_caption(news, emojis):
-    # Без заголовків і тем
     text = paraphrase_text(news["title"], news["url"])
-    # Мемний абзац іноді
-    if random.random() < 0.45:
-        text += "\n\n" + random.choice(MEME_LINES)
-    # Емодзі ще у кінець або середину
-    if random.random() < 0.5:
-        text += " " + random.choice(EMOJIS)
-    return f"{text}\n{SIGNATURE}", random.choice(STATIC_THEMES)
+    # Мінімум один абзац, максимум три
+    return f"{text}\n{SIGNATURE}", random.choice(STYLE_PROMPTS)
 
 def generate_ai_image(news, theme):
     try:
-        style_prompt = random_style_prompt(theme)
+        style_prompt = theme
         prompt = f"{news['title']}, {style_prompt}"
         response = client.images.generate(
             model="dall-e-3",
@@ -175,10 +176,10 @@ def post_news():
     for news in news_list:
         print(f"[DEBUG] Перевіряю: {news['title']}")
         if news["title"] not in history and news["title"]:
-            caption, theme = generate_caption(news, EMOJIS)
+            caption, style_prompt = generate_caption(news, EMOJIS)
             try:
                 if should_send_image():
-                    img_url = generate_ai_image(news, theme)
+                    img_url = generate_ai_image(news, style_prompt)
                     if img_url:
                         bot.send_photo(TELEGRAM_CHANNEL_ID, img_url, caption=caption)
                         print(f"[SUCCESS] Пост із малюнком надіслано: {caption[:60]}")
