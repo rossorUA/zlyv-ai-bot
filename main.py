@@ -1,4 +1,5 @@
-
+from keep_alive import keep_alive
+keep_alive()
 import os
 import time
 import random
@@ -72,7 +73,11 @@ def generate_caption(news, emojis):
     emoji = random.choice(emojis)
     intro = f"{emoji} {theme.upper()}"
     text = paraphrase_text(news["title"])
+
     # Гарантуємо довжину
     if len(text) < MIN_POST_LEN:
-        text += " " + paraphrase_text(news["title"] + " Що скаж
+        text = paraphrase_text(news["title"]) + " Що скажеш? 🤔"
+
+    return intro + "\n\n" + text
+
 
