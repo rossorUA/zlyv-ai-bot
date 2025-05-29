@@ -76,13 +76,12 @@ def save_history(history):
 def fetch_fresh_news():
     news = []
     try:
-        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=50", timeout=10)
+        resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=60", timeout=10)
         data = resp.json()
         for hit in data.get("hits", []):
-            # Беремо тільки технологічні новини (зазвичай є в title)
             if hit.get("title") and hit.get("url"):
                 title = hit["title"].lower()
-                # Фільтр – залишаємо тільки ІТ/AI/Software/програмування/стартапи
+                # Останні технологічні та AI/Dev новини
                 if any(
                     kw in title for kw in [
                         "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
@@ -92,13 +91,30 @@ def fetch_fresh_news():
                     ]
                 ):
                     news.append({"title": hit["title"], "url": hit["url"]})
+        # Саме свіже — вгору!
+        news = sorted(news, key=lambda n: n["title"])  # алфавіт — можна зробити й за датою, якщо треба
         random.shuffle(news)
     except Exception as e:
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
 
+def extend_to_min_length(text, min_len=250, max_len=350):
+    unique_memes = [x for x in MEME_LINES + EXTRA_IDEAS if x not in text]
+    i = 0
+    while len(text) < min_len and i < len(unique_memes):
+        addition = " " + unique_memes[i]
+        if len(text) + len(addition) > max_len:
+            break
+        text += addition
+        i += 1
+    if len(text) > max_len:
+        last_space = text.rfind(' ', 0, max_len)
+        if last_space == -1:
+            last_space = max_len
+        text = text[:last_space] + "…"
+    return text.strip()
+
 def paraphrase_text(title, url):
-    # Суперпідказка для GPT: максимум конкретики, нуль води, тільки по темі ІТ, AI, розробка
     extra = ""
     if random.random() < 0.3:
         extra = "\n" + random.choice(EXTRA_IDEAS)
@@ -114,7 +130,7 @@ def paraphrase_text(title, url):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=280,
+            max_tokens=320,
             temperature=1.2
         )
         text = response.choices[0].message.content.strip()
@@ -124,15 +140,11 @@ def paraphrase_text(title, url):
         text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
         text = re.sub(r'\n+', '\n', text)
         text = text.replace('  ', ' ')
-        if len(text) > MAX_POST_LEN:
-            text = text[:MAX_POST_LEN-1] + "…"
-        if len(text) < MIN_POST_LEN:
-            text += " " + random.choice(MEME_LINES)
+        text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
         # ГАРАНТУЄМО абзаци
         if '\n' not in text:
-            # Штучно розбиваємо на 2 абзаци (по середині фрази)
             words = text.split()
-            if len(words) > 32:
+            if len(words) > 40:
                 text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
         return text.strip()
     except Exception as e:
