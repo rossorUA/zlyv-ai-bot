@@ -79,14 +79,14 @@ def generate_caption(news, emojis):
     theme = random.choice(STATIC_THEMES)
     emoji = random.choice(emojis)
     intro = f"{emoji} {theme.upper()}"
-    text = paraphrase_text(news["title"])
+    text = paraphrase_text(news["title"], news["url"])
     # Гарантуємо довжину
     if len(text) < MIN_POST_LEN:
-        text = paraphrase_text(news["title"]) + ""
-    # Обрізаємо, якщо надто довгий текст
+        text += " Деталі на сайті! 😉"
     if len(text) > MAX_POST_LEN:
-        text = text[:MAX_POST_LEN - 1]  # обрізати до максимуму
+        text = text[:MAX_POST_LEN]
     return intro + "\n\n" + text + SIGNATURE
+
 
 
 def post_news():
