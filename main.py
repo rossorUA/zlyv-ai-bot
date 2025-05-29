@@ -84,13 +84,11 @@ def fetch_fresh_news():
     news = []
     try:
         resp = requests.get("https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=50", timeout=10)
-        print(f"[DEBUG] Статус код: {resp.status_code}")
         data = resp.json()
         for hit in data.get("hits", []):
             if hit.get("title") and hit.get("url"):
                 news.append({"title": hit["title"], "url": hit["url"]})
         random.shuffle(news)
-        print(f"[DEBUG] Новин зібрано: {len(news)}")
     except Exception as e:
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
@@ -101,10 +99,10 @@ def paraphrase_text(title, url):
         extra = "\n" + random.choice(EXTRA_IDEAS)
     prompt = (
         "Ти — редактор українського Telegram-каналу для айтішників. Пиши тільки українською. "
-        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (обсягом 250–350 символів), не згадуючи сайти, чужі бренди, посилання, хештеги чи заклики до реєстрації. "
-        "Не копіюй заголовок, не вигадуй неіснуючі сервіси, не вставляй чужу рекламу чи заклики кудись підписатися. "
-        "Просто зроби короткий авторський огляд/думку/реакцію на новинку — без чужої реклами, без питань у кінці, без банальних фраз і без назв сайтів."
-        " Додавай смайли, легкий гумор, лайфхак, прикол, короткий аналіз, але лише по темі IT, AI, програмування."
+        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (250–350 символів), не згадуючи сайти, бренди, посилання, хештеги чи заклики до реєстрації. "
+        "Не копіюй заголовок, не вигадуй неіснуючі сервіси, не вставляй рекламу чи підписки. "
+        "Просто зроби короткий авторський огляд/думку/реакцію на новинку – без реклами, без питань у кінці, без банальних фраз і без назв сайтів. "
+        "Додавай смайли, легкий гумор, лайфхак, прикол, короткий аналіз, але тільки по темі IT, AI, програмування."
         " Ось новина:\n"
         f"{title}\n{extra}"
     )
@@ -113,15 +111,14 @@ def paraphrase_text(title, url):
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=250,
-            temperature=1.4
+            temperature=1.35
         )
         text = response.choices[0].message.content.strip()
-
-        # Прибрати посилання, хештеги, заклики підписатися, чужі бренди
-        text = re.sub(r'http\S+', '', text)  # Прибрати посилання
-        text = re.sub(r'#\w+', '', text)     # Прибрати хештеги
+        # Чистка тексту від брендів/посилань/спаму
+        text = re.sub(r'http\S+', '', text)
+        text = re.sub(r'#\w+', '', text)
         text = re.sub(r'\s+([.,!?])', r'\1', text)
-        text = re.sub(r'(канал|сайт|реєстрац|підпис|підписуй|підписатися|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
+        text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
         text = re.sub(r'\n+', '\n', text)
         text = text.replace('  ', ' ')
         if len(text) > MAX_POST_LEN:
@@ -134,15 +131,13 @@ def paraphrase_text(title, url):
         return title  # fallback
 
 def random_style_prompt(theme):
-    # Випадковий стиль під тему
     base = random.choice(STYLE_PROMPTS)
     topic = theme.lower()
-    # Збільшуємо різноманітність
     full = f"{base}, theme: {topic}, trending, digital art, no text, high detail, modern"
     return full
 
 def should_send_image():
-    # Кожен 3-5 пост - з малюнком
+    # Кожен 3-5 пост – з малюнком
     return random.randint(1, 5) == 3
 
 def generate_caption(news, emojis):
@@ -150,10 +145,10 @@ def generate_caption(news, emojis):
     emoji = random.choice(EMOJIS)
     intro = f"{emoji} {theme.upper()}"
     text = paraphrase_text(news["title"], news["url"])
-    # Мемний абзац через раз
+    # Мемний абзац не дублюється підряд (додаємо лише один раз, не спамимо)
     if random.random() < 0.45:
         text += "\n\n" + random.choice(MEME_LINES)
-    # Емодзі ще у кінець або середину
+    # Емодзі у кінець або середину
     if random.random() < 0.5:
         text += " " + random.choice(EMOJIS)
     return f"{intro}\n\n{text}\n{SIGNATURE}", theme
@@ -183,7 +178,6 @@ def post_news():
         if news["title"] not in history and news["title"]:
             caption, theme = generate_caption(news, EMOJIS)
             try:
-                # Випадково додаємо малюнок (раз на кілька постів, кожного разу різний стиль)
                 if should_send_image():
                     img_url = generate_ai_image(news, theme)
                     if img_url:
