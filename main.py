@@ -19,7 +19,7 @@ MAX_POSTS_PER_DAY = 30
 POSTING_HOURS_START = 9
 POSTING_HOURS_END = 24  # до 00:00
 
-MIN_POST_LEN = 250
+MIN_POST_LEN = 100
 MAX_POST_LEN = 350
 
 HISTORY_FILE = "post_history.json"
@@ -32,11 +32,11 @@ SIGNATURE = "\n@zlyv_ai"
 STYLE_PROMPTS = [
     "pixel art, vibrant, detailed",
     "vector illustration, flat, modern, bright",
-    "photo-realistic, realistic lighting, tech workspace",
-    "3d render, colorful, modern, shiny",
-    "minimalist, clean, sharp, IT design",
-    "retro computer art, 90s style",
-    "mem-style, fun, ironic"
+    "photo-realistic, realistic lighting, office, workspace, real people, computers",
+    "3d render, modern, shiny, real office",
+    "minimalist, clean, sharp, IT team, desk",
+    "retro computer art, 90s style, tech room",
+    "mem-style, fun, ironic, programmers at work"
 ]
 
 MEME_LINES = [
@@ -60,6 +60,16 @@ EXTRA_IDEAS = [
     "Реальні кейси вже на GitHub. 🔥"
 ]
 
+# Ключові слова — тільки свіжа техно/AI/Dev тематика!
+KEYWORDS = [
+    "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
+    "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
+    "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
+    "go", "java", "c++", "cpp", "data", "postgres", "sql", "macos", "windows",
+    "edge", "firefox", "chrome", "neural", "llm", "gemini", "deepmind", "copilot",
+    "langchain", "huggingface", "pytorch", "tensorflow", "astro", "bun", "deno"
+]
+
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
 
@@ -81,22 +91,35 @@ def fetch_fresh_news():
         for hit in data.get("hits", []):
             if hit.get("title") and hit.get("url"):
                 title = hit["title"].lower()
-                # Останні технологічні та AI/Dev новини
-                if any(
-                    kw in title for kw in [
-                        "ai", "ml", "github", "python", "node", "javascript", "js", "typescript",
-                        "dev", "open source", "framework", "cloud", "linux", "tool", "api", "software",
-                        "release", "launch", "update", "feature", "docker", "kubernetes", "app", "react",
-                        "go", "java", "c++", "cpp", "data", "postgres", "sql", "api", "macos", "windows"
-                    ]
-                ):
+                # Суворий фільтр по ключах (тільки справді актуальні IT/AI/Dev)
+                if any(kw in title for kw in KEYWORDS):
                     news.append({"title": hit["title"], "url": hit["url"]})
-        # Саме свіже — вгору!
-        news = sorted(news, key=lambda n: n["title"])  # алфавіт — можна зробити й за датою, якщо треба
         random.shuffle(news)
     except Exception as e:
         print(f"[ERROR] fetch_fresh_news: {e}")
     return news
+
+def ensure_abzac(text):
+    # Якщо GPT забув про абзаци, розділимо по точках
+    if '\n' in text:
+        return text
+    sentences = re.split(r'(?<=[.?!])\s+', text)
+    if len(sentences) > 2:
+        return sentences[0] + '\n\n' + ' '.join(sentences[1:])
+    elif len(sentences) > 1:
+        return sentences[0] + '\n\n' + sentences[1]
+    return text
+
+def insert_emoji(text):
+    # Якщо GPT не вставив емодзі, вставляємо в друге речення
+    if any(e in text for e in EMOJIS):
+        return text
+    sentences = re.split(r'(?<=[.?!])\s+', text)
+    if len(sentences) > 1:
+        sentences[1] = random.choice(EMOJIS) + " " + sentences[1]
+        return sentences[0] + ' ' + sentences[1] + ' ' + ' '.join(sentences[2:])
+    else:
+        return text + " " + random.choice(EMOJIS)
 
 def extend_to_min_length(text, min_len=250, max_len=350):
     unique_memes = [x for x in MEME_LINES + EXTRA_IDEAS if x not in text]
@@ -130,44 +153,49 @@ def paraphrase_text(title, url):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=320,
-            temperature=1.2
+            max_tokens=340,
+            temperature=1.15
         )
         text = response.choices[0].message.content.strip()
-        # Чистка від зайвого (бренди, лінки, повтори)
         text = re.sub(r'http\S+', '', text)
         text = re.sub(r'#\w+', '', text)
         text = re.sub(r'(канал|сайт|реєстрац|підпис|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
         text = re.sub(r'\n+', '\n', text)
         text = text.replace('  ', ' ')
+        text = ensure_abzac(text)
+        text = insert_emoji(text)
         text = extend_to_min_length(text, min_len=MIN_POST_LEN, max_len=MAX_POST_LEN)
-        # ГАРАНТУЄМО абзаци
-        if '\n' not in text:
-            words = text.split()
-            if len(words) > 40:
-                text = ' '.join(words[:len(words)//2]) + '\n\n' + ' '.join(words[len(words)//2:])
         return text.strip()
     except Exception as e:
         print(f"[ERROR] paraphrase_text: {e}")
         return title  # fallback
 
-def random_style_prompt(theme):
-    base = random.choice(STYLE_PROMPTS)
-    topic = theme.lower()
-    full = f"{base}, theme: {topic}, trending, digital art, no text, high detail, modern"
-    return full
+def random_style_prompt(title):
+    # Стиль під конкретну новину, якщо є слова "cloud" то робимо хмару, якщо linux – комп'ютери тощо
+    lower = title.lower()
+    if "cloud" in lower:
+        return "photo-realistic, cloud data center, office, people, digital, high detail"
+    if "linux" in lower or "bsd" in lower:
+        return "photo-realistic, developers, workstations, open-source office, monitors"
+    if "ai" in lower or "neural" in lower:
+        return "photo-realistic, people with laptops, neural networks, digital screen, IT office"
+    if "github" in lower or "open source" in lower:
+        return "3d render, programmers at desk, github logos, computers"
+    if "framework" in lower:
+        return "vector illustration, web app, UI screens, designers at work"
+    # ...
+    # Додавай ще логіку під свої потреби
+    return random.choice(STYLE_PROMPTS)
 
 def should_send_image():
     return random.randint(1, 5) == 3
 
 def generate_caption(news, emojis):
     text = paraphrase_text(news["title"], news["url"])
-    # Мінімум один абзац, максимум три
-    return f"{text}\n{SIGNATURE}", random.choice(STYLE_PROMPTS)
+    return f"{text}\n{SIGNATURE}", random_style_prompt(news["title"])
 
-def generate_ai_image(news, theme):
+def generate_ai_image(news, style_prompt):
     try:
-        style_prompt = theme
         prompt = f"{news['title']}, {style_prompt}"
         response = client.images.generate(
             model="dall-e-3",
