@@ -5,6 +5,7 @@ import time
 import random
 import json
 import requests
+import re
 from datetime import datetime
 import openai
 from telebot import TeleBot
@@ -29,8 +30,18 @@ SIGNATURE = "\n@zlyv_ai"
 
 STATIC_THEMES = [
     "AI-новинки", "фреймворки", "інсайди", "нові інструменти", "Google", "GitHub", "лайфхаки",
-    "open-source", "ProductHunt", "Bun", "Deno", "Next.js", "Qwik", "Astro", "VS Code",
+    "open-source", "Bun", "Deno", "Next.js", "Qwik", "Astro", "VS Code",
     "Copilot", "аналітика", "тренди", "DevTools", "Linux", "API", "Cloud", "ML"
+]
+
+STYLE_PROMPTS = [
+    "pixel art, vibrant, detailed",
+    "vector illustration, flat, modern, bright",
+    "photo-realistic, realistic lighting, tech workspace",
+    "3d render, colorful, modern, shiny",
+    "minimalist, clean, sharp, IT design",
+    "retro computer art, 90s style",
+    "mem-style, fun, ironic"
 ]
 
 MEME_LINES = [
@@ -85,16 +96,17 @@ def fetch_fresh_news():
     return news
 
 def paraphrase_text(title, url):
-    # Щоб зробити пости різними, підкидаємо ідею для GPT
     extra = ""
     if random.random() < 0.33:
         extra = "\n" + random.choice(EXTRA_IDEAS)
     prompt = (
-        "Ти — редактор Telegram-каналу для айтішників. Пиши українською мовою! "
-        "На основі цього заголовку і посилання створи унікальний, авторський, легкий, неофіційний і веселий пост для Telegram, обсягом 250–350 символів (але не менше 250!). "
-        "Не копіюй просто заголовок, не вигадуй фейкових фактів, пиши цікаво, додавай інтригу, прикол, мем, лайфхак або короткий аналіз. "
-        "Додавай смайли всередині чи наприкінці, але не завершуй питанням і не використовуй банальні закінчення."
-        f"\nОсь новина:\n{title}\n{url}{extra}"
+        "Ти — редактор українського Telegram-каналу для айтішників. Пиши тільки українською. "
+        "Твоя задача: взяти тему новини та створити унікальний, авторський, легкий, неофіційний і веселий пост (обсягом 250–350 символів), не згадуючи сайти, чужі бренди, посилання, хештеги чи заклики до реєстрації. "
+        "Не копіюй заголовок, не вигадуй неіснуючі сервіси, не вставляй чужу рекламу чи заклики кудись підписатися. "
+        "Просто зроби короткий авторський огляд/думку/реакцію на новинку — без чужої реклами, без питань у кінці, без банальних фраз і без назв сайтів."
+        " Додавай смайли, легкий гумор, лайфхак, прикол, короткий аналіз, але лише по темі IT, AI, програмування."
+        " Ось новина:\n"
+        f"{title}\n{extra}"
     )
     try:
         response = client.chat.completions.create(
@@ -104,38 +116,52 @@ def paraphrase_text(title, url):
             temperature=1.4
         )
         text = response.choices[0].message.content.strip()
-        # Якщо текст занадто довгий, обрізаємо до MAX_POST_LEN
+
+        # Прибрати посилання, хештеги, заклики підписатися, чужі бренди
+        text = re.sub(r'http\S+', '', text)  # Прибрати посилання
+        text = re.sub(r'#\w+', '', text)     # Прибрати хештеги
+        text = re.sub(r'\s+([.,!?])', r'\1', text)
+        text = re.sub(r'(канал|сайт|реєстрац|підпис|підписуй|підписатися|telegram|tg|читайте|деталі|докладніше|читай|дивися|дивись|клік|приєднуй|слідкуй)', '', text, flags=re.I)
+        text = re.sub(r'\n+', '\n', text)
+        text = text.replace('  ', ' ')
         if len(text) > MAX_POST_LEN:
             text = text[:MAX_POST_LEN-1] + "…"
-        # Якщо занадто короткий — додаємо випадковий мем
         if len(text) < MIN_POST_LEN:
             text += " " + random.choice(MEME_LINES)
-        return text
+        return text.strip()
     except Exception as e:
         print(f"[ERROR] paraphrase_text: {e}")
         return title  # fallback
 
+def random_style_prompt(theme):
+    # Випадковий стиль під тему
+    base = random.choice(STYLE_PROMPTS)
+    topic = theme.lower()
+    # Збільшуємо різноманітність
+    full = f"{base}, theme: {topic}, trending, digital art, no text, high detail, modern"
+    return full
+
 def should_send_image():
-    # Кожен 4-7 пост - з картинкою
-    return random.randint(1, 6) == 3
+    # Кожен 3-5 пост - з малюнком
+    return random.randint(1, 5) == 3
 
 def generate_caption(news, emojis):
     theme = random.choice(STATIC_THEMES)
     emoji = random.choice(EMOJIS)
     intro = f"{emoji} {theme.upper()}"
     text = paraphrase_text(news["title"], news["url"])
-    # Додаємо мемний абзац через раз
+    # Мемний абзац через раз
     if random.random() < 0.45:
         text += "\n\n" + random.choice(MEME_LINES)
-    # Додаємо ще емодзі у кінець або середину
+    # Емодзі ще у кінець або середину
     if random.random() < 0.5:
         text += " " + random.choice(EMOJIS)
-    return f"{intro}\n\n{text}\n{SIGNATURE}"
+    return f"{intro}\n\n{text}\n{SIGNATURE}", theme
 
-def generate_ai_image(news):
-    # Генеруємо малюнок через OpenAI DALL-E (або робимо мем/банер на тему новини)
+def generate_ai_image(news, theme):
     try:
-        prompt = f"{news['title']}, trending, digital art, bright colors, vector illustration"
+        style_prompt = random_style_prompt(theme)
+        prompt = f"{news['title']}, {style_prompt}"
         response = client.images.generate(
             model="dall-e-3",
             prompt=prompt,
@@ -155,11 +181,11 @@ def post_news():
     for news in news_list:
         print(f"[DEBUG] Перевіряю: {news['title']}")
         if news["title"] not in history and news["title"]:
-            caption = generate_caption(news, EMOJIS)
+            caption, theme = generate_caption(news, EMOJIS)
             try:
-                # Випадково додаємо малюнок (раз на кілька постів)
+                # Випадково додаємо малюнок (раз на кілька постів, кожного разу різний стиль)
                 if should_send_image():
-                    img_url = generate_ai_image(news)
+                    img_url = generate_ai_image(news, theme)
                     if img_url:
                         bot.send_photo(TELEGRAM_CHANNEL_ID, img_url, caption=caption)
                         print(f"[SUCCESS] Пост із малюнком надіслано: {caption[:60]}")
